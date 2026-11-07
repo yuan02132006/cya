@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="作業清單">
+<meta name="theme-color" content="#2f6fed">
+<title>作業清單</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--text:#1d2433;--sub:#6b7385;--line:#e4e7ee;--accent:#2f6fed;--warn:#d9480f;--warnbg:#fff1e6;--ok:#2b9348;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141a;--card:#1c2030;--text:#eef0f6;--sub:#9aa2b5;--line:#2c3248;--accent:#6c9bff;--warn:#ffa366;--warnbg:#3a2a1d;--ok:#5fd07f}}
+:root[data-theme="dark"]{--bg:#12141a;--card:#1c2030;--text:#eef0f6;--sub:#9aa2b5;--line:#2c3248;--accent:#6c9bff;--warn:#ffa366;--warnbg:#3a2a1d;--ok:#5fd07f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:24px;margin:8px 0 4px}
+.sub{color:var(--sub);font-size:14px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.banner{background:var(--warnbg);color:var(--warn);border:1px solid var(--warn);border-radius:14px;padding:12px 14px;margin-bottom:14px;font-size:15px}
+.banner button{margin-top:8px}
+form,.row{display:flex;gap:8px}
+.addwrap{display:flex;flex-direction:column;gap:8px}
+input[type=text],input[type=date]{flex:1;min-width:0;padding:11px 12px;font-size:16px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line);font-weight:500}
+h2{font-size:15px;margin:18px 0 8px;color:var(--sub)}
+h2.late{color:var(--warn)}
+.item{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item .t{flex:1;word-break:break-word}
+.done{background:var(--ok);padding:8px 12px;font-size:14px}
+.x{background:transparent;color:var(--sub);padding:6px 8px;font-weight:400}
+.empty{text-align:center;color:var(--sub);padding:22px 0}
+.foot{font-size:13px;color:var(--sub);margin-top:20px}
+</style>
+</head>
+<body>
+<main>
+  <h1>📚 作業清單</h1>
+  <div class="sub" id="today"></div>
+  <div id="banner"></div>
+  <div class="card">
+    <div class="addwrap">
+      <div class="row">
+        <input type="text" id="txt" placeholder="輸入作業,例如:數學習作 p.32" autocomplete="off">
+      </div>
+      <div class="row">
+        <input type="date" id="date">
+        <button id="add" type="button">新增</button>
+      </div>
+    </div>
+  </div>
+  <div id="list"></div>
+  <div class="foot">
+    <button class="ghost" id="notif" type="button">開啟通知提醒</button>
+    <p id="finished"></p>
+    <p>每天 23:00 會提醒你輸入明天的待辦事項。</p>
+  </div>
+</main>
+<script>
+var KEY="hw_tasks_v1", RKEY="hw_reminded", REMIND_HOUR=23;
+var tasks=[], doneCount=0;
+function load(){try{var d=JSON.parse(localStorage.getItem(KEY)||"{}");tasks=d.tasks||[];doneCount=d.done||0}catch(e){tasks=[];doneCount=0}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({tasks:tasks,done:doneCount}))}catch(e){}}
+function ds(d){var m=d.getMonth()+1,day=d.getDate();return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(day<10?"0":"")+day}
+function todayS(){return ds(new Date())}
+function tomorrowS(){var d=new Date();d.setDate(d.getDate()+1);return ds(d)}
+function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+var W=["日","一","二","三","四","五","六"];
+function label(s){var p=s.split("-"),d=new Date(+p[0],p[1]-1,+p[2]);return (d.getMonth()+1)+"/"+d.getDate()+"(週"+W[d.getDay()]+")"}
+
+function render(){
+  var t=todayS(),tm=tomorrowS(),now=new Date();
+  document.getElementById("today").textContent="今天 "+label(t)+",還有 "+tasks.length+" 項作業未完成";
+  var groups={late:[],today:[],future:{}};
+  tasks.slice().sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.id-b.id}).forEach(function(k){
+    if(k.date<t)groups.late.push(k);else if(k.date===t)groups.today.push(k);else(groups.future[k.date]=groups.future[k.date]||[]).push(k)});
+  var h="";
+  function sec(title,arr,cls){if(!arr.length)return;h+='<h2 class="'+(cls||"")+'">'+title+'</h2><div class="card">';
+    arr.forEach(function(k){h+='<div class="item"><span class="t">'+esc(k.text)+'</span><button class="done" data-done="'+k.id+'">完成</button><button class="x" data-del="'+k.id+'" aria-label="刪除">✕</button></div>'});h+='</div>'}
+  sec("⚠️ 已逾期",groups.late,"late");
+  sec("今天",groups.today);
+  Object.keys(groups.future).sort().forEach(function(d){sec((d===tm?"明天 ":"")+label(d),groups.future[d])});
+  if(!tasks.length)h='<div class="card empty">🎉 沒有未完成的作業!<br>在上面新增明天的作業吧</div>';
+  document.getElementById("list").innerHTML=h;
+  document.getElementById("finished").textContent=doneCount?"累計已完成 "+doneCount+" 項 👍":"";
+  var show=now.getHours()>=REMIND_HOUR&&!tasks.some(function(k){return k.date===tm});
+  document.getElementById("banner").innerHTML=show?'<div class="banner">🌙 已經 '+REMIND_HOUR+' 點囉!記得輸入明天的待辦事項。<br><button type="button" id="goin">現在輸入</button></div>':"";
+  var g=document.getElementById("goin");if(g)g.onclick=function(){document.getElementById("date").value=tm;document.getElementById("txt").focus()};
+  var nb=document.getElementById("notif");
+  nb.style.display=("Notification" in window&&Notification.permission==="default")?"":"none";
+}
+
+function addTask(){
+  var el=document.getElementById("txt"),v=el.value.trim();if(!v)return;
+  var d=document.getElementById("date").value||todayS();
+  tasks.push({id:Date.now(),text:v,date:d});save();el.value="";render();el.focus();
+}
+document.getElementById("add").onclick=addTask;
+document.getElementById("txt").addEventListener("keydown",function(e){if(e.key==="Enter")addTask()});
+document.getElementById("list").addEventListener("click",function(e){
+  var a=e.target.getAttribute("data-done"),b=e.target.getAttribute("data-del");
+  if(a){tasks=tasks.filter(function(k){return k.id!=a});doneCount++;save();render()}
+  if(b){tasks=tasks.filter(function(k){return k.id!=b});save();render()}
+});
+document.getElementById("notif").onclick=function(){
+  if("Notification" in window)Notification.requestPermission().then(render);
+};
+
+function checkReminder(){
+  var now=new Date();
+  if(now.getHours()>=REMIND_HOUR){
+    var last="";try{last=localStorage.getItem(RKEY)||""}catch(e){}
+    if(last!==todayS()){
+      try{localStorage.setItem(RKEY,todayS())}catch(e){}
+      if("Notification" in window&&Notification.permission==="granted"){
+        try{new Notification("📚 該輸入明天的作業囉!",{body:"花一分鐘把明天的待辦事項記下來吧。"})}catch(e){}
+      }
+    }
+  }
+  render();
+}
+document.getElementById("date").value=todayS();
+load();render();checkReminder();
+setInterval(checkReminder,30000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)checkReminder()});
+</script>
+</body>
+</html>
